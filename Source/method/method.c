@@ -48,8 +48,9 @@ double method_iterate(VMCode function, VMCode derivative, double guess, int *err
 		++iterations;
 	} while (iterations < MAX_ITERATIONS);
 	fprintf(stderr, "Error: could not find a suitable result, aborting. \n"
-			        "  After %i iterations the best result is %.4f with"
-					"  a function value of %.4f.\n", iterations, machine.reg_x, f_xn);
+	        "  After %i iterations the best result is %.4f with"
+	        "  a function value of %.4f.\n", iterations, machine.reg_x, f_xn
+	);
 	exit_status = -1;
 
 end:

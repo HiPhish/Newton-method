@@ -2,7 +2,7 @@
 #define NEWTON_SYNTAX_NODE_H
 
 /** @file syntax_node.h
- *  
+ *
  *  Public header file for syntax nodes.
  *
  *  This file contains all the publicly available declarations for syntax nodes,
@@ -19,8 +19,12 @@
  *  the enum, which can be used for the size of an array.  It is used in the
  *  arrays *operator_arity* and *operation_list*. If entries are added those
  *  arrays must be adjusted as well.
+ *
+ *  The unknown operator is guaranteed to have the number 0. This can be used
+ *  when error-checking.
  */
 typedef enum operator_type{
+	OP_UNKNOWN          , /**< Unknown/undefined operator.    */
 	OP_NUMBER           , /**< Numbers literal.               */
 	OP_NEGATE           , /**< Unary minus sign, subtraction. */
 	OP_PLUS             , /**< Addition operator, not a sign. */
@@ -38,7 +42,6 @@ typedef enum operator_type{
 	OP_E                , /**< Constant e (Euler's number).   */
 	OP_LEFT_BRACE       , /**< Left parenthesis.              */
 	OP_RIGHT_BRACE      , /**< Right parenthesis.             */
-	OP_UNKNOWN          , /**< Unknown/undefined operator.    */
 	NUMBER_OF_OPERATORS , /**< Total number or operators.     */
 } Operator;
 
@@ -65,8 +68,8 @@ char *operator_to_string[NUMBER_OF_OPERATORS];
  */
 typedef struct syntax_node {
 	/** The type of operator the node represents. */
-	enum operator_type operator_value;
-	
+	Operator operator_value;
+
 	/** Numeric value for number nodes.
 	 *
 	 *  If a node is not a number node this value will be ignored and is best
@@ -75,7 +78,7 @@ typedef struct syntax_node {
 	 *  not planned and I am not certain if there would be any benefit to it.
 	 */
 	double numeric_value;
-	
+
 	/** The arity of the operator node.
 	 *
 	 *  This is always 0 for numbers, variables and constants, 1 for functions
@@ -84,7 +87,7 @@ typedef struct syntax_node {
 	 *  such as a logarithm to any base.
 	 */
 	unsigned int arity;
-	
+
 	/** Array of child nodes.
 	 *
 	 *  The size of this array is given by the node's @a arity; when allocating
@@ -100,7 +103,8 @@ typedef struct syntax_node {
  *  @param number  The number value for the node if it's a number node. Set to
  *                 *0* for operator nodes.
  *
- *  @return  Pointer to the created syntax node.
+ *  @return  Pointer to the created syntax node. The result is `NULL` on
+ *  failure.
  */
 SyntaxNode* syntax_node_construct(Operator op, double number);
 
@@ -113,7 +117,7 @@ SyntaxNode* syntax_node_construct(Operator op, double number);
  */
 SyntaxNode *syntax_node_copy(const SyntaxNode *const original);
 
-/** Destroys an existing syntax node freeing its memory.
+/** Destroys an existing syntax node recursively, freeing its memory.
  *
  *  Before the node gets freed its child nodes are freed recursively first, or
  *  else they would be out of reach for the application and would cause a
@@ -132,7 +136,7 @@ void syntax_node_destroy(SyntaxNode *node);
  *  @param node  Node to perform the operation of.
  *
  *  @return  Number resulting from operating on the node. In case of number
- *           nodes the return value is the number itself. In case of variable 
+ *           nodes the return value is the number itself. In case of variable
  *           nodes it is the variable value.
  */
 double syntax_node_operate(SyntaxNode *node, double value);

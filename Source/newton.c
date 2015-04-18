@@ -2,10 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "lexer/lexer.h"
 #include "compiler/compiler.h"
 #include "virtual_machine/vm.h"
 #include "method/method.h"
+
+/** Exit codes of the program. */
+enum exit_codes {
+	EX_SUCCESS  , /**< Successful termination.     */
+	EX_ARGS     , /**< Invalid function arguments. */
+	EX_COMPILER , /**< Compiler failure.           */
+};
 
 /** Handles arguments passed to the program.
  *
@@ -21,52 +27,41 @@ void print_usage(void);
 
 
 int main(int argc, const char *argv[]) {
-	int exit_status = 0; /* Exist status of the program. */
+	int exit_status = EX_SUCCESS; /* Exist status of the program. */
 
-	double x_0, x_n;     /* Initial and resulting value of Newton's method. */
-	int print_steps = 0; /* Print every step of the iteration.              */
-	
-	const char *function_string = NULL; /* Text representation of function. */
-	const char *guess_string    = NULL; /* Text representation of guess.    */
-	const char *print_string    = NULL; /* Text representation of guess.    */
+	double x_0, x_n;     /* Initial and resulting value of Newton's method.  */
+	int print_steps = 0; /* Print every step of the iteration.               */
 
-	SyntaxNode *function_tree   = NULL; /* Syntax tree of the function.     */
-	SyntaxNode *derivative_tree = NULL; /* Syntax tree of the derivative.   */
+	const char *function_string = NULL; /* Text representation of function.  */
+	const char *guess_string    = NULL; /* Text representation of guess.     */
+	const char *print_string    = NULL; /* Text representation print option. */
 
-	Lexer *lex = NULL; /* Lexer object to analyse the function. */
+	SyntaxNode *function_tree   = NULL; /* Syntax tree of the function.      */
+	SyntaxNode *derivative_tree = NULL; /* Syntax tree of the derivative.    */
 
-	VMCode function_vm_code;   /* VM code of the function.   */
-	VMCode derivative_vm_code; /* VM code of the derivative. */
+	VMCode *function_vm_code    = NULL; /* VM code of the function.          */
+	VMCode *derivative_vm_code  = NULL; /* VM code of the derivative.        */
 
 	if (handle_arguments(argc, argv, &function_string, &guess_string, &print_string) != 0) {
 		fprintf(stderr, "Error: invalid arguments.\n");
 		print_usage();
-		exit_status = 1;
+		exit_status = EX_ARGS;
 		goto end;
 	}
 	if (!function_string || !guess_string) {
 		fprintf(stderr, "Error: invalid arguments.\n");
 		print_usage();
-		exit_status = 1;
+		exit_status = EX_ARGS;
 		goto end;
 	}
 	if (print_string) {print_steps = 1;}
 
-	x_0 = atoi(guess_string);
-	
-	// start the lexer to create the function syntax tree, then condense it
-	if ((lex = init_lexer(function_string)) == NULL) {
-		fprintf(stderr, "Memory error: could not allocate lexer.\n");
-		exit_status = 1;
-		goto end;
-	}
-	run_lexer(lex);
-	function_tree = destroy_lexer(lex);
-	lex = NULL;
+	x_0 = strtod(guess_string, NULL);
 
-	// If the lexer and parser were unsuccessful
-	if (function_tree == NULL) {
-		exit_status = 1;
+
+	if (compiler_frontend(function_string, &function_tree)) {
+		fprintf(stderr, "Compiler frontend error.\n");
+		exit_status = EX_COMPILER;
 		goto end;
 	}
 
@@ -76,13 +71,20 @@ int main(int argc, const char *argv[]) {
 	derivative_tree = syntax_node_derive(function_tree);
 	syntax_node_condense(derivative_tree);
 
-	// compile function and derivative
-	function_vm_code   = compile_syntax_tree(function_tree  );
-	derivative_vm_code = compile_syntax_tree(derivative_tree);
+	if (compiler_backend(function_tree, &function_vm_code) != 0) {
+		fprintf(stderr, "Compiler backend error.\n");
+		exit_status = EX_COMPILER;
+		goto end;
+	}
+	if (compiler_backend(derivative_tree, &derivative_vm_code) != 0) {
+		fprintf(stderr, "Compiler backend error.\n");
+		exit_status = 1;
+		goto end;
+	}
 
 	// Perform Newton's method.
-	x_n = method_iterate(function_vm_code, derivative_vm_code, x_0, &exit_status, print_steps);
-	if (exit_status != 0) {goto end;}
+	x_n = method_iterate(*function_vm_code, *derivative_vm_code, x_0, &exit_status, print_steps);
+	if (exit_status != EX_SUCCESS) {goto end;}
 
 
 	printf("  The root of \'%s\' with starting value %f is: %f.\n",function_string, x_0, x_n);

@@ -11,8 +11,11 @@ a virtual machine for interpreting the user's input.
 
 .. contents::
 
+
+
 Overview and goals
 ##################
+
 The program is a command-line application that takes a function string and a
 starting value from the user as input and returns the approximated root as the
 output. The string has to be analysed lexically first to produce tokens, then
@@ -28,8 +31,11 @@ must be passed as command-line parameters. However, the design of the program
 makes it easy to take parts of it out of context and use them in an interactive
 program.
 
+
+
 Structure of the project
 ************************
+
 The project is structured as a tree of directories. Here is a rough overview::
 
     Newton (root directory)
@@ -57,8 +63,11 @@ source code is in the *Source* directory, there you will find the main source
 file with the main function and a header file with global constant definitions.
 The other sub-directories contain the modules.
 
+
+
 Modules
 =======
+
 A module is a standalone library that encapsulates a very specialised part of
 the program.  Some modules depend on other modules, but for the most part every
 module can be looked at individually. Of course a module on its own is entirely
@@ -66,8 +75,11 @@ useless, they are just tools that need to be used by the program through the
 main function. Over the course of this document we will examine every module in
 detail.
 
+
+
 Building the project
 ********************
+
 The root directory has a makefile, running the standard target will produce a
 complete binary in the root directory. There is also a makefile in the *Source*
 directory which should be used during development, because it does not clean up
@@ -77,6 +89,9 @@ The project has no dependencies other than a fully C11-standard compliant
 compiler with support for variable-sized arrays. I use clang from the LLVM_
 project, but any compiler should work.
 
+
+
+
 Source code review
 ##################
 
@@ -84,8 +99,11 @@ In this chapter we will examine how the implementation works. There will be
 less code than prose, since we will discuss the ideas rather than the concrete
 implementation. For the exact code refer to the source files.
 
+
+
 Newton's method
 ***************
+
 Given a function :math:`f: \mathbb{R} \rightarrow \mathbb{R}`, its derivative
 :math:`f'` and a start value :math:`x_0 \in \mathbb{R}` we can approximate a
 root of the function via the following recursion:
@@ -115,8 +133,11 @@ In reality there is more between steps 5 and 6, but the above steps are
 sufficient to produce a correctly working program. We will discuss the extra
 steps when we get to the virtual machine.
 
+
+
 Syntax nodes and the syntax tree
 ********************************
+
 Mathematical expressions can be written as syntax trees where every node is an
 *operator* and its children are its *operands*. Leaf nodes are either numbers,
 constants or variables, i.e. operators with zero arity. Syntax trees are
@@ -149,9 +170,12 @@ into a single number node.::
 To operate on a tree start evaluating the root node, and recursively evaluate
 all children.
 
+
+
 Syntax nodes in code
 ====================
-A syntax node is a struct holding the node's operator, numeric value and
+
+A syntax node is a structure holding the node's operator, numeric value and
 pointers to child nodes. Not all of these are used by all nodes: only number
 nodes need a numeric value and not all nodes have the maximum number of
 children. This makes all nodes bloated, but it does not matter because we will
@@ -169,14 +193,19 @@ compile the tree to bytecode anyway.
 | operand        | struct syntax_node[MAX_ARITY] * |
 +----------------+---------------------------------+
 
+
+
 Operating on syntax nodes
 =========================
+
 To operate on a node look up the operation function that belongs to the node's
 operator.  Each of the operating functions returns a double-precision number and
 takes in the pointer to the node we operate on as the argument. The operation
 function performs the arithmetic operation on the operation results of the
 node's operands, so the whole procedure travels recursively down the tree. Here
-is the function for addition::
+is the function for addition
+
+.. code:: cpp
 
     static double add(struct syntax_node *node) {
         double lhs = syntax_node_operate(node->operand[0]);
@@ -186,8 +215,11 @@ is the function for addition::
 
 To operate on the entire tree start with the root.
 
+
+
 Deriving a syntax tree
 ======================
+
 Much like operating, deriving is done recursively by starting out with the root
 of the tree. The difference now is that instead of producing numbers we are
 creating whole new syntax nodes and assembling them into a tree.
@@ -201,7 +233,9 @@ to be derived. For example, you might have learned in school that
     \frac{\text{d}}{\text{d} x} (\ln x) = \frac{1}{x}
 
 which is correct, and you might feel compelled to write the derivation function
-like this::
+like this
+
+.. code:: cpp
 
     static struct syntax_node *derive_ln(const struct syntax_node * const node) {
         struct syntax_node *new_node = syntax_node_construct(DIVIDE_OP, 0.0);
@@ -215,27 +249,34 @@ operand of ``ln`` is not just a variable but an entire function on its own.
 According to the chain rule the complete formula is
 
 .. math::
-	\frac{\text{d}}{\text{d} x} \left( \ln (f(x)) \right) 
-	= \left( \frac{\text{d}}{\text{d} x} f(x) \right) \frac{1}{f(x)}
+    \frac{\text{d}}{\text{d} x} \left( \ln (f(x)) \right)
+    = \left( \frac{\text{d}}{\text{d} x} f(x) \right) \frac{1}{f(x)}
 
-which results in the following code::
+which results in the following code
+
+.. code:: cpp
+
+    while (iteration_counter < MAX_ITERATIONS && fabs(result) >= EPSILON)
 
     static struct syntax_node *derive_ln(const struct syntax_node * const node) {
         struct syntax_node *new_node = syntax_node_construct(TIMES_OP, 0.0);
         new_node->operand[0] = syntax_node_derive(node->operand[0]);
         new_node->operand[1] = syntax_node_construct(DIVIDE_OP, 0.0);
-        
+
         new_node->operand[1]->operand[0] = syntax_node_construct(NUMBER_OP, 1.0);
         new_node->operand[1]->operand[1] = syntax_node_copy(node->operand[0]);
-        
+
         return new_node;
     }
 
 The same reasoning applies to all other operators. Numbers and constants are
 always derived to 0 and variables to 1.
 
+
+
 Deriving exponents
 ==================
+
 Here is where it gets murky. Let's first take a look at an alternate way of
 expressing as exponent:
 
@@ -281,8 +322,11 @@ if-else instructions. We can easily decide if a node is a constant the same way
 we contract nodes; simply checking if it is a number node is not enough, we have
 to go through the entire sub-tree and see if we can find any variable nodes.
 
+
+
 Lexing and parsing
 ******************
+
 Lexical analysis (*lexing*) and parsing are generally two different steps, but
 in this example they are working in tandem. The lexer initiates the parser and
 whenever it produces a token it is passed immediately to the parsed to build the
@@ -340,8 +384,11 @@ need the latter to make decisions for implicit operators. The rest are buffers
 for collecint numbers and characters of multi-character operators like numbers
 and functions.
 
+
+
 Implementing a Turing machine
 =============================
+
 The function string will serve as our input tape and a pointer to ``char`` will
 be the machine's read-head. We don't need to write anything to the tape and we
 are only concerned with the next character, not the previous one. The purpose of
@@ -349,6 +396,8 @@ our machine is to verify that all sub-sequences represent sensible instructions;
 if everything checks out the machine will terminate in the success state,
 otherwise it will enter the error state. Each time the machine transitions
 states, even if it transitions to the same state, an action can be performed.
+This action is a side effect that makes our machine produce something useful:
+syntax nodes.
 
 In code the lexer is a structure that holds a reference to the input string, a
 pointer to the current character on the string, the value of the previous state,
@@ -357,13 +406,16 @@ number. The string buffer concatenates letters to identify functions.
 
 During every iteration we read the current character and depending on what kind
 it is (letter, digit, decimal point, symbol) we transition to another state and
-perform an action. Some action produce tokens as a side effect, these tokens are
-then passed to the parser.
+perform an action. Some actions, in particular those after reading a different
+type of character, produce tokens as a side effect, these tokens are then passed
+to the parser.
 
 Once the last character of the string has been reached and if the machine's
 final state is the accepting state the lexer can safely terminate, freeing all
 its pointers. If at any point the lexer enters the error state we have a format
-error. Such an string might look like this::
+error. Such an string might look like this:
+
+.. code::
 
     5 * sun(2..5 + x * pi?2)
 
@@ -374,54 +426,62 @@ know operator.
 The lexer is fairly tolerant when it comes to whitespace, a whitespace
 character terminates a function or number, but they are not required when it is
 clear where one ends and the other begins. The following variants are both
-legal::
+legal:
+
+.. code::
 
     5*sin(2.5+x*pi/2)
     5 * sin ( 2.5 + x * pi / 2 )
 
+
+
 Lexer states
 ============
+
 Here is a list of machine states and their description:
 
-:ST_START:
-    This is the starting state of the machine, and also the state after a
-    whitespace character has been read.
-:ST_ERROR:
-    If the sequence read cannot be associated with any known instruction we end
-    up here.
-:ST_ACCEPT:
-    After the machine has read the terminating `NUL` character and is not in
-    the error state it will transition to this state.
-:ST_LETTER:
-    Reading a letter will bring us to this state and as long as we remain here
-    we concatenate characters into a string, which will then be compared to
-    existing functions once we transition to another state
-:ST_NUMBER:
-    As long as we are reading digits they get accumulated.
-:ST_DECIMAL_POINT:
-    If we read a decimal point we must transition to this state.
-:ST_DECIMAL_NUM:
-    Reading a digit after a decimal point leads to a decimal number.
-:ST_SYMBOL:
+ST_START
+   This is the starting state of the machine, and also the state after a
+   whitespace character has been read.
+ST_ERROR
+   If the sequence read cannot be associated with any known instruction we end
+   up here.
+ST_ACCEPT
+   After the machine has read the terminating `NUL` character and is not in
+   the error state it will transition to this state.
+ST_LETTER
+   Reading a letter will bring us to this state and as long as we remain here
+   we concatenate characters into a string, which will then be compared to
+   existing functions once we transition to another state
+ST_NUMBER
+   As long as we are reading digits they get accumulated.
+ST_DECIMAL_POINT
+   If we read a decimal point we must transition to this state.
+ST_DECIMAL_NUM
+   Reading a digit after a decimal point leads to a decimal number.
+ST_SYMBOL
     When we read a symbol we are in the symbol state. Symbols are different
     from letters because it is legal to write an expression like `5 +sin(0)`
     and expect the parser to know that the plus does not belong to the sinus
     and the parenthesis not to the zero.
 
-All of these are enum items. The reason why numbers and decimal numbers are
-different state is that it is legal for a number to have a decimal point
+All of these are enumeration items. The reason why numbers and decimal numbers
+are different state is that it is legal for a number to have a decimal point
 appended, but illegal to append a decimal point to a decimal number, there may
 only be one point.
 
+
+
 Transitioning between states
 ============================
+
 A transition instruction consists of the next state and a function pointer to
-the action to perform. We can use a struct to express this:
+the action to perform. We can use a structure to express this:
 
 +--------------------------------------+
 | struct parser_transition_instruction |
 +===============+======================+
-| next_stat     |  enum parser_state   |
+| next_state    |  enum parser_state   |
 +---------------+----------------------+
 | action        |  \*void(void)        |
 +---------------+----------------------+
@@ -449,11 +509,11 @@ class of character read.
 +------------+--------+------------+------------+--------+-------+---------+
 | Letter     | Letter | Error      | Error      | Symbol | Start | Error   |
 +------------+--------+------------+------------+--------+-------+---------+
-| Number     | Letter | Number     | Decimal p. | Symbol | Start | Error   |
+| Number     | Letter | Number     | |dec_pt|   | Symbol | Start | Error   |
 +------------+--------+------------+------------+--------+-------+---------+
-| Decimal p. | Error  | Decimal n. | Error      | Error  | Error | Error   |
+| |dec_pt|   | Error  | |dec_no|   | Error      | Error  | Error | Error   |
 +------------+--------+------------+------------+--------+-------+---------+
-| Decimal n. | Letter | Decimal n. | Error      | Symbol | Start | Error   |
+| |dec_no|   | Letter | |dec_no|   | Error      | Symbol | Start | Error   |
 +------------+--------+------------+------------+--------+-------+---------+
 | Symbol     | Letter | Number     | Error      | Symbol | Start | Error   |
 +------------+--------+------------+------------+--------+-------+---------+
@@ -464,33 +524,46 @@ class of character read.
 | Accept     | Error  | Error      | Error      | Error  | Error | Error   |
 +------------+--------+------------+------------+--------+-------+---------+
 
+.. |dec_no| replace:: Decimal number
+.. |dec_pt| replace:: Decimal point
+
 Next are the transition actions. An empty field means no action.
 
-+------------+----------+-----------+---------+--------+--------+---------+
-|            | Letter   | Digit     | Decimal | Symbol | Space  | Unknown |
-+------------+----------+-----------+---------+--------+--------+---------+
-| Letter     | append c |           |         | pass f | pass f |         |
-+------------+----------+-----------+---------+--------+--------+---------+
-| Number     | pass n   | append di | init de | pass n | pass n |         |
-+------------+----------+-----------+---------+--------+--------+---------+
-| Decimal p. |          | append de |         |        |        |         |
-+------------+----------+-----------+---------+--------+--------+---------+
-| Decimal n. | pass n   | append de |         | pass n | pass n |         |
-+------------+----------+-----------+---------+--------+--------+---------+
-| Symbol     | append c | append di |         | pass s |        |         |
-+------------+----------+-----------+---------+--------+--------+---------+
-| Start      | append c | append di |         | Symbol |        |         |
-+------------+----------+-----------+---------+--------+--------+---------+
-| Error      |          |           |         |        |        |         |
-+------------+----------+-----------+---------+--------+--------+---------+
-| Accept     |          |           |         |        |        |         |
-+------------+----------+-----------+---------+--------+--------+---------+
++------------+----------+----------+----------+-----------+----------+---------+
+|            | Letter   | Digit    | Decimal  | Symbol    | Space    | Unknown |
++------------+----------+----------+----------+-----------+----------+---------+
+| Letter     | |app_ch| |          |          | |pass_f|  | |pass_f| |         |
++------------+----------+----------+----------+-----------+----------+---------+
+| Number     | |pass_n| | |app_di| | |ini_de| | |pass_n|  | |pass_n| |         |
++------------+----------+----------+----------+-----------+----------+---------+
+| |dec_pt|   |          | |app_de| |          |           |          |         |
++------------+----------+----------+----------+-----------+----------+---------+
+| |dec_no|   | |pass_n| | |app_de| |          | |pass_n|  | |pass_n| |         |
++------------+----------+----------+----------+-----------+----------+---------+
+| Symbol     | |app_ch| | |app_di| |          | |pass_s|  |          |         |
++------------+----------+----------+----------+-----------+----------+---------+
+| Start      | |app_ch| | |app_di| |          | |pass_s|  |          |         |
++------------+----------+----------+----------+-----------+----------+---------+
+| Error      |          |          |          |           |          |         |
++------------+----------+----------+----------+-----------+----------+---------+
+| Accept     |          |          |          |           |          |         |
++------------+----------+----------+----------+-----------+----------+---------+
+
+.. |pass_n| replace:: Pass number
+.. |pass_f| replace:: Pass function
+.. |pass_s| replace:: Pass symbol
+.. |app_ch| replace:: Append character
+.. |app_di| replace:: Append digit
+.. |app_de| replace:: Append decimal
+.. |ini_de| replace:: Initialise decimal
 
 The actions are carried out when transitioning state and the two tables above
 are actually one combined table in the code.
 
 Taking the above string ``5 * sin(2.5 + x * pi/2)`` as an example, here is what
-the machine looks like initially::
+the machine looks like initially
+
+.. code::
 
      _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ __
     |5| |*| |s|i|n|(|2|.|5| |+| |x| |*| |p|i|/|2|)|\0|
@@ -505,7 +578,9 @@ the machine looks like initially::
     +--------------+
 
 After one iteration the character ``5`` has been read and the machine is in the
-number state and the number buffer contains the number 5.::
+number state and the number buffer contains the number 5.
+
+.. code::
 
      _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ __
     |5| |*| |s|i|n|(|2|.|5| |+| |x| |*| |p|i|/|2|)|\0|
@@ -520,7 +595,9 @@ number state and the number buffer contains the number 5.::
     +--------------+
 
 A whitespace means that the number is over. So the next state is back in the
-start state and the machine puts out a number token.::
+start state and the machine puts out a number token.
+
+.. code::
 
      _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ __
     |5| |*| |s|i|n|(|2|.|5| |+| |x| |*| |p|i|/|2|)|\0|
@@ -536,7 +613,9 @@ start state and the machine puts out a number token.::
 
 Symbols are handled all the same. Unlike letters symbols cannot be concatenated
 into one token, every symbol is a token on its own. The only rule is that a
-symbol cannot follow a decimal point.::
+symbol cannot follow a decimal point.
+
+.. code::
 
      _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ __
     |5| |*| |s|i|n|(|2|.|5| |+| |x| |*| |p|i|/|2|)|\0|
@@ -551,7 +630,9 @@ symbol cannot follow a decimal point.::
     +--------------+
 
 Letter characters prompt the letter state. As long as letters follow letters
-they are concatenated into a string.::
+they are concatenated into a string.
+
+.. code::
 
      _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ __
     |5| |*| |s|i|n|(|2|.|5| |+| |x| |*| |p|i|/|2|)|\0|
@@ -567,7 +648,9 @@ they are concatenated into a string.::
 
 When transitioning to a state other than letter the string is looked up in a
 table and if it matches a known function a token is created. I will skip over
-the next three steps.::
+the next three steps.
+
+.. code::
 
      _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ __
     |5| |*| |s|i|n|(|2|.|5| |+| |x| |*| |p|i|/|2|)|\0|
@@ -582,7 +665,9 @@ the next three steps.::
     +--------------+
 
 And so on. Braces are treated like any other operator as well. The lexer does
-not verify correct syntax, only correct format.::
+not verify correct syntax, only correct format.
+
+.. code::
 
      _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ __
     |5| |*| |s|i|n|(|2|.|5| |+| |x| |*| |p|i|/|2|)|\0|
@@ -598,6 +683,8 @@ not verify correct syntax, only correct format.::
 
 The machine has some special exception rules to also add implicit operators
 such as the multiplication in something like ``3x``.
+
+
 
 Parsing tokens into a tree
 ==========================
@@ -627,6 +714,8 @@ node: the root node. All the other nodes will be in the tree. If this is not the
 case we have a syntax error. The Shunting-Yard algorithm performs the syntax
 checks for us, so if anything goes wrong we have found an error.
 
+
+
 Tying lexer and parser together
 ===============================
 A parser instance is just the two stacks, so we can let the lexer control it.
@@ -635,6 +724,8 @@ performs an iteration of the Shunting-Yard algorithm with it. Once the lexer has
 terminated there will be no more new nodes created, so the parser is instructed
 to wrap up. Once the parser terminates the lexer terminates as well and returns
 the root node.
+
+
 
 The problem with syntax trees
 *****************************
@@ -656,6 +747,8 @@ The solution is to discard the tree in favour for something more simple: a
 linear sequence of instructions containing only the minimum of necessary
 information. A bytecode representation.
 
+
+
 Introducing the virtual machine
 *******************************
 Back in the old days before the good old times there were the bad old times. A
@@ -672,15 +765,15 @@ We'll illustrate it with a drawing::
 
        +--[CARTRIDGE]--+
        |               |
-       |  length       |            _ _ _ _ _     _
-       |  code---------+--[TAPE]-->|_|_|_|_|_|...|_|
-       |               |
+       |  length       |           +----+----+----+----+----+----+   +----+
+       |  code---------+--[TAPE]-->|0x05|0x01|0x0a|0x03|0x05|0x01|...|0x0e|
+       |               |           +----+----+----+----+----+----+   +----+
        +---------------+
                |             +-[MACHINE]-+
                |             |           |
-    |          |         |   | reg_x     |  
-    |          |         |   | tmp_0     |  
-    |          |         |   | tmp_1     |  
+    |          |         |   | reg_x     |
+    |          |         |   | tmp_0     |
+    |          |         |   | tmp_1     |
     |          V         |   | stack     |
     +-[insert cartridge]-+---+-----------+
 
@@ -745,6 +838,8 @@ and read backwards as
 meaning the order of operands in backwards Polish notation is flipped in
 comparison to reverse Polish notation.
 
+
+
 Bytecode and opcodes
 ********************
 Now that we have established what our goal is we need to write the compiler
@@ -769,6 +864,8 @@ To write a number the memory of the number is copied 1:1 to the end of the
 array. Then the opcode for number literals is appended. We write the opcode
 after the number because the code will be read backwards.
 
+
+
 Opcodes
 =======
 A computer can only understand numbers, and our virtual machine is no different.
@@ -776,16 +873,18 @@ That's why every instruction is mapped to a number, and since we have chosen one
 byte for every instruction that gives us up to 256 individual opcodes. We will
 only use some of these, so the rest is considered and error.
 
-Opcodes are simply defined using an enum and written as unsigned 8-bit integers,
-or ``uint8_t`` types in C.
+Opcodes are simply defined using an enumeration and written as unsigned 8-bit
+integers, or ``uint8_t`` types in C.
 
 You might be noticing a problem now: we have too many codes, which is a waste of
 memory. Furthermore, not all operators are equally common, so why do they
 require the same amount of memory? It would be better if frequent opcodes used
 less information to encode than infrequent ones. We could compress the code
 using for example Huffman compression and store the Huffman tree as metadata in
-the "cartridge". We won't be doing this though, it would not be worth it in this
-project.
+the "cartridge". We won't be doing this though, it would not be worth the effort
+for our limited scope.
+
+
 
 Compiling the tree
 ******************
@@ -860,6 +959,8 @@ child is. We would have to store with every opcode where its child is or more
 from node to node. And that that point we are back to running back and forth in
 memory, which is exactly what we were trying to avoid in the first place.
 
+
+
 Virtual machine
 ***************
 The virtual machine is very simple: it has a stack that can hold an unspecified
@@ -870,21 +971,25 @@ working.
 
 Starting at the tail of the code sequence we work our way backwards. One way to
 implement the machine would be to emulate assembly code using temporary register
-variables::
+variables
+
+.. code::
 
     POP  tmp_0       ; pop number from stack into register tmp_0
     POP  tmp_1       ; pop number from stack into register tmp_1
     ADD  tmp_0 tmp_1 ; add tmp_1 to tmp_0
     PUSH tmp_0       ; push tmp_0 back to the stack
 
-Since we are in C we can write it a bit nicer using preprocessor macros::
+Since we are in C we can write it a bit nicer using preprocessor macros
+
+.. code::
 
     double tmp[MAX_ARITY]; /**< Temporary registers.                         */
     int    i = 0;          /**< Which temporary register is the current one. */
 
     /** Pop a number off this function's stack. */
     #define POP  number_stack_pop(stack, &tmp[i++]);
-    	
+
     /** Push a number to function's stack. */
     #define PUSH(value)  number_stack_push(stack, value); i = 0;
 
@@ -914,6 +1019,8 @@ Every operation pops a number of values from the stack that is equal to its
 arity, e.g. two for addition, one for sinus and zero for constants, and always
 pushes one value.
 
+
+
 Newton's method, again
 **********************
 Finally we can actually implement Newton's method now that we have all the
@@ -923,26 +1030,30 @@ into two bytecode objects. We also create a virtual machine.
 
 To execute the method we iterate until the result is close enough to the root.
 The exit criterion will the that either the result is close enough to the root
-or that we have already performed a certain maximum number of iterations.::
+or that we have already performed a certain maximum number of iterations.
+
+.. code:: cpp
 
     while (iteration_counter < MAX_ITERATIONS && fabs(result) >= EPSILON)
 
 Without a limit on the number of iterations the algorithm could get stuck in an
 endless loop because Newton's method does not always terminate. Here is the
-complete loop, rewritten slightly::
+complete loop, rewritten slightly
+
+.. code:: cpp
 
     double x_n, f_xn, d_xn; /* x_n, f(x_n) and f'(x_n) */
     do {
         machine_load_code(*machine, function);
         if((exit_status = machine_execute(machine, &f_xn)) != 0) {goto end;}
-        
+
         if (fabs(f_xn) < EPSILON) {goto end;}
-        
+
         machine_load_code(*machine, derivative);
         if((exit_status = machine_execute(machine, &d_xn)) != 0) {goto end;}
-        
+
         x_n = x_n - f_xn / d_xn;
-        
+
         ++iterations;
     } while (iterations < MAX_ITERATIONS)
     exit_status = -1;
@@ -957,8 +1068,12 @@ function should return an error, not success. If the algorithm was successful
 it would have skipped right to the end, over this line.
 
 
+
+
 Conclusion and closing thoughts
 ###############################
+
+
 
 History of *Newton's method implemented in C*
 *********************************************
@@ -970,7 +1085,9 @@ variables, run a simple algorithm in a loop and print the result.
 
 The original idea was to only support polynomial functions. The user would be
 prompted to enter the degree and then the program would prompt the user again
-for that many coefficients. This would be very easy to derive as well.::
+for that many coefficients. This would be very easy to derive as well.
+
+.. code::
 
     $ Please enter the grade of your function
     > 3
@@ -1037,6 +1154,8 @@ people to learn from it. I believe that you have only understood a topic if you
 are also able to explain it to other people. So I hope you find reading this
 program as informative as I found writing it.
 
+
+
 Where to go from here
 *********************
 The program could still use some improvements:
@@ -1057,7 +1176,7 @@ The program could still use some improvements:
 - Writing the compiled bytecode to disc so other programs could use it. The
   current format is not sufficient, because the way that floating point numbers
   are stored is implementation-dependent. There needs to be some standard.
-  
+
 - Control over optimisation of trees; currently the tree is always fully
   optimised, possibility loosing information about the original string in the
   process. A user might not want that.
@@ -1075,19 +1194,16 @@ The program could still use some improvements:
   names, are they hardcoded, and if not how do you tell the program which
   substrings represent variables?
 
-- Replace forceful program termination via ``exit`` with more graceful
-  assertions and error checking. This one is embarrassing, but the code is
-  littered with poor error handling. There are two types of error: errors from
-  user input, like trying to divide by zero or wrong syntax, and errors inherent
-  to the program, like producing a stack overflow. The former needs to be
-  handled as an exception, catch the error gracefully and report to the user
-  where the problem lies. The latter is a bug and needs to be detected with an
-  assertion and terminate the program immediately, reporting where the bug lies.
+- There are two types of error: errors from user input, like trying to divide
+  by zero or wrong syntax, and errors inherent to the program, like producing a
+  stack overflow. The former needs to be handled as an exception, catch the
+  error gracefully and report to the user where the problem lies. The latter is
+  a bug and needs to be detected with an assertion and terminates the program
+  immediately, reporting where the bug lies.
 
-- Clean up the compiler modules. The *lexer* and *parser* modules can be merged
-  into a *frontend* module and the *compiler* module should be renamed to
-  *backend*. The reason is that the parser will never be run outside the lexer,
-  so ther is no point in keeping it globally visible.
+- Functions currently only return either 0 on success or 1 on failure. This is
+  good for knowing that an error occurred, but not what kind of error. We need
+  proper exit codes instead and every module should define its own set.
 
 
 .. _LLVM: http://llvm.org

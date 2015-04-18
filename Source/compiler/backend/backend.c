@@ -1,7 +1,8 @@
 #include <stdlib.h>
 #include <assert.h>
-#include "compiler.h"
-#include "../virtual_machine/opcodes.h"
+
+#include "backend.h"
+#include "../../virtual_machine/opcodes.h"
 
 /* Compilation:
  *
@@ -15,7 +16,6 @@
  * Number literals are written in front of their opcode because the bytecode
  * will be read in reverse order.
  */
-
 
 /** Maps a syntax node operator to a VM bytecode.
  *
@@ -46,7 +46,7 @@ static uint8_t operator_to_opcode[NUMBER_OF_OPERATORS] = {
  *
  *  @return 0 on success, non-0 on error.
  */
-static int compile_syntax_node(struct syntax_node *node, VMCode *code);
+static int compile_syntax_node(const SyntaxNode *const node, VMCode *code);
 
 /** Writes an opcode byte to the bytecode.
  *
@@ -62,7 +62,7 @@ static int compile_syntax_node(struct syntax_node *node, VMCode *code);
 static int write_opcode(uint8_t opcode, VMCode *code);
 
 /** Writes the naked bytes of a number to the bytecode.
- *  
+ *
  *  @param number    The number to write.
  *  @param code      The VMCode object to write to.
  *  @param position  Index of the bytecode sequence tail.
@@ -86,30 +86,34 @@ static int write_number(double number, VMCode *code);
 static int grow_bytecode(VMCode *code, size_t by);
 
 
+int compiler_backend(const SyntaxNode *const tree, VMCode **code) {
+	assert(*code == NULL); /* The code object must be NULL */
 
-struct vm_code compile_syntax_tree(struct syntax_node *tree) {
+	int error = 0; /* No error */
+
 	#define CODE_LENGTH  64 /**< Default size of the code array. */
-	/** BUG: The length should be the length of the bytecode, not the array */
-	VMCode code = {
-		.length   = 0,
-		.capacity = CODE_LENGTH,
-		.code     = malloc(CODE_LENGTH * sizeof(uint8_t))
-	};
-
-	if (code.code == NULL) {goto end;}
+	*code = malloc(sizeof(VMCode));
+	if (!*code) {error = 1; goto end;}
+	(*code)->length   = 0;
+	(*code)->capacity = CODE_LENGTH;
+	(*code)->code     = malloc(CODE_LENGTH * sizeof(uint8_t));
+	if (!(*code)->code) {free(*code); *code = NULL; error = 1; goto end;}
 
 	// If compilation fails at any point the bytecode is invalid, so delete it.
-	if (compile_syntax_node(tree, &code) != 0) {
-		free(code.code);
-		code.code = NULL;
+	if (compile_syntax_node(tree, *code) != 0) {
+		error = 1;
+		free((*code)->code);
+		free(*code);
+		*code = NULL;
+		goto end;
 	}
 
 end:
-	return code;
+	return error;
 	#undef CODE_LENGTH
 }
 
-int compile_syntax_node(struct syntax_node *node, VMCode *code) {
+static int compile_syntax_node(const SyntaxNode *const node, VMCode *code) {
 	#define CHECK_EXIT_STATUS  if (error != 0) {goto end;}
 	int     error = 0; /**< Indicate success or failure.     */
 	uint8_t opcode;    /**< Opcode to write to the bytecode. */
@@ -125,17 +129,17 @@ int compile_syntax_node(struct syntax_node *node, VMCode *code) {
 
 	error = write_opcode(opcode, code);
 	CHECK_EXIT_STATUS
-	for (unsigned int i = 0; i < node->arity; ++i) {
+	for (int i = 0; i < node->arity; ++i) {
 		error = compile_syntax_node(node->operand[i], code);
 		CHECK_EXIT_STATUS
 	}
-	
+
 end:
 	return error;
 	#undef CHECK_EXIT_STATUS
 }
 
-int write_opcode(uint8_t opcode, VMCode *code) {
+static int write_opcode(uint8_t opcode, VMCode *code) {
 	/* If the opcode does not fit reallocate */
 	if (grow_bytecode(code, sizeof(uint8_t)) != 0) {return 1;}
 
@@ -144,7 +148,7 @@ int write_opcode(uint8_t opcode, VMCode *code) {
 	return 0;
 }
 
-int write_number(double number, VMCode *code) {
+static int write_number(double number, VMCode *code) {
 	assert(code->length > 0);
 	/* If the number literal does not fit reallocate */
 	if (grow_bytecode(code, sizeof(double)) != 0) {return 1;}
@@ -165,7 +169,10 @@ static int grow_bytecode(VMCode *code, size_t by) {
 
 	if (code->length + by > code->capacity) {
 		uint8_t *new_code = realloc(code->code, (code->capacity + GROW_BY) * sizeof(uint8_t));
-		if (new_code == NULL) {return 1;}
+		if (new_code == NULL) {
+			fprintf(stderr, "Memory error: could no grow bytecode sequence.\n");
+			return 1;
+		}
 		code->code      = new_code;
 		code->capacity += GROW_BY;
 	}

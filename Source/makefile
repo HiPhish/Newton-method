@@ -3,13 +3,12 @@
 PROG    = newton
 CFLAGS  = -std=c99 -g -pedantic -Werror -Wall
 LDLIBS  =
-OBJECTS = syntax_node.o       \
-          lexer.o             \
-          parser.o            \
-          vm_code.o           \
-          compiler.o          \
-          vm.o                \
-          method.o            \
+OBJECTS = syntax_node.o \
+          vm_code.o     \
+          frontend.o    \
+          backend.o     \
+          vm.o          \
+          method.o      \
           newton.o
 $(CC)   = clang
 
@@ -45,8 +44,11 @@ parser.o: parser/parser.c parser/parser.h
 method.o: method/method.c method/method.h
 	@$(CC) ${CFLAGS} -c $*/$*.c
 
-compiler.o: compiler/compiler.c compiler/compiler.h virtual_machine/opcodes.h virtual_machine/vm_code.h syntax_node/syntax_node.h
-	@$(CC) ${CFLAGS} -c $*/$*.c
+backend.o: compiler/backend/backend.h compiler/backend/backend.c virtual_machine/opcodes.h syntax_node/syntax_node.h
+	@$(CC) ${CFLAGS} -c compiler/$*/$*.c
+
+frontend.o: compiler/frontend/frontend.h compiler/frontend/frontend.c virtual_machine/opcodes.h syntax_node/syntax_node.h
+	@$(CC) ${CFLAGS} -c compiler/$*/$*.c
 
 vm.o: virtual_machine/vm.h virtual_machine/vm.c virtual_machine/vm_code.h virtual_machine/opcodes.h
 	@$(CC) ${CFLAGS} -c virtual_machine/$*.c

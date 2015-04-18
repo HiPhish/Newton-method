@@ -334,6 +334,7 @@ static SyntaxNode *derive_failure(const SyntaxNode * const node);
  *  `operator_arity[TIMES_OP]`.
  */
 static int operator_arity[NUMBER_OF_OPERATORS] = {
+	[ OP_UNKNOWN     ] = 0,
 	[ OP_NUMBER      ] = 0,
 	[ OP_NEGATE      ] = 1,
 	[ OP_PLUS        ] = 2,
@@ -351,7 +352,6 @@ static int operator_arity[NUMBER_OF_OPERATORS] = {
 	[ OP_E           ] = 0,
 	[ OP_LEFT_BRACE  ] = 0,
 	[ OP_RIGHT_BRACE ] = 0,
-	[ OP_UNKNOWN     ] = 0,
 };
 
 /** Array holding function pointers to the operations for each operator.
@@ -364,6 +364,7 @@ static int operator_arity[NUMBER_OF_OPERATORS] = {
  *  parentheses.
  */
 static double (*operation_list[NUMBER_OF_OPERATORS])(SyntaxNode *node, double value) = {
+	[ OP_UNKNOWN     ] = syntax_node_operation_failure               ,
 	[ OP_NUMBER      ] = syntax_node_operation_number_value          ,
 	[ OP_NEGATE      ] = syntax_node_operation_negate                ,
 	[ OP_PLUS        ] = syntax_node_operation_add                   ,
@@ -381,7 +382,6 @@ static double (*operation_list[NUMBER_OF_OPERATORS])(SyntaxNode *node, double va
 	[ OP_E           ] = syntax_node_operation_e                     ,
 	[ OP_LEFT_BRACE  ] = syntax_node_operation_failure               ,
 	[ OP_RIGHT_BRACE ] = syntax_node_operation_failure               ,
-	[ OP_UNKNOWN     ] = syntax_node_operation_failure               ,
 };
 
 unsigned int operator_precedence[NUMBER_OF_OPERATORS] = {
@@ -438,30 +438,48 @@ static SyntaxNode * (*derivation_table[NUMBER_OF_OPERATORS])(const SyntaxNode * 
 
 SyntaxNode* syntax_node_construct(Operator op, double number) {
 	SyntaxNode *ptr = (SyntaxNode *)malloc(sizeof(SyntaxNode));
-	SyntaxNode node = {op, number, operator_arity[op]};
-	*ptr = node;
+	if (!ptr) {
+		fprintf(stderr, "Memory error: Could not allocate memory for syntax node.\n");
+		return NULL;
+	}
+	*ptr = (SyntaxNode){op, number, operator_arity[op]};
 	return ptr;
 }
 
 SyntaxNode *syntax_node_copy(const SyntaxNode * const original){
 	SyntaxNode * const copy = syntax_node_construct(original->operator_value, original->numeric_value);
-	// recursively copy and add the child nodes of the original to the copy
+	if (!copy) {
+		fprintf(stderr, "Memory error: Could not copy syntax node.\n");
+		return NULL;
+	}
+
+	/* recursively copy and add the child nodes of the original to the copy */
 	for (int i = 0; i < copy->arity; i++) {
 		copy->operand[i] = syntax_node_copy(original->operand[i]);
+		if (!copy->operand[i]) {
+			/* Free previously allocated children */
+			for (int j = i-1; j >= 0; --j) {
+				syntax_node_destroy(copy->operand[j]);
+			}
+			/* Free this copy */
+			free(copy);
+			return NULL;
+		}
 	}
+
 	return copy;
 }
 
 void syntax_node_destroy(SyntaxNode *node) {
-	if (node == NULL) {
-		return; // should this be an error instead?
-	}
-	// destroy all child nodes first or else we get a memory leak
+	assert (node != NULL);
+
+	/* destroy all child nodes first or else we get a memory leak */
 	for (int i = 0; i < node->arity; i++) {
 		syntax_node_destroy(node->operand[i]);
 		node->operand[i] = NULL;
 	}
-	// free the memory
+
+	/* free the memory */
 	free(node);
 }
 
@@ -499,13 +517,18 @@ int syntax_node_condense(SyntaxNode *node) {
 }
 
 int syntax_node_is_constant(SyntaxNode *node) {
+	/* Variables are never constant. */
 	if (node->operator_value == OP_X_VAR) {
 		return 0;
 	}
-	int is_constant = 1;
+
+	int is_constant = 1; /* True */
 	for (int i = 0; i < node->arity; i++) {
+		/* If any child is not constant the result will be 0. */
 		is_constant *= syntax_node_is_constant(node->operand[0]);
+		if (!is_constant) {break;}
 	}
+
 	return is_constant;
 }
 
@@ -544,7 +567,7 @@ static double syntax_node_operation_divide(SyntaxNode *node, double value) {
 	assert(node->operator_value == OP_DIVIDE);
 	double divisor = syntax_node_operate(node->operand[1], value);
 	if (divisor == 0) {
-		fprintf(stderr, "Syntax error: trying to divide by zero");
+		fprintf(stderr, "Method error: trying to divide by zero. Try another guess value.\n");
 		exit(1);
 	}
 	return syntax_node_operate(node->operand[0], value) / divisor;
@@ -596,7 +619,7 @@ static double syntax_node_operation_e(SyntaxNode *node, double value) {
 }
 
 static double syntax_node_operation_failure(SyntaxNode *node, double value) {
-	assert(0);
+	assert(0); /* Fails always */
 }
 
 SyntaxNode *syntax_node_derive(SyntaxNode *node) {
@@ -789,40 +812,29 @@ static SyntaxNode *derive_x(const SyntaxNode * const node) {
 }
 
 static SyntaxNode *derive_failure(const SyntaxNode * const node) {
-	assert(0);
+	assert(0); /* Fails always. */
 }
 
 Operator char_to_operator(char *c) {
-	if (*c == '+') {
-		return OP_PLUS;
-	}
-	if (*c == '-') {
-		return OP_MINUS;
-	}
-	if (*c == '*') {
-		return OP_TIMES;
-	}
-	if (*c == '/') {
-		return OP_DIVIDE;
-	}
-	if (*c == '^') {
-		return OP_POWER;
-	}
-	
-	/* We allow both () and [] to be used interchangeably. */
-	if (*c == '(' || *c == '[') {
-		return OP_LEFT_BRACE;
-	}
-	if (*c == ')' || *c == ']') {
-		return OP_RIGHT_BRACE;
+	Operator o = OP_UNKNOWN;
+
+	switch (*c) {
+		case '+' : o = OP_PLUS        ; break;
+		case '-' : o = OP_MINUS       ; break;
+		case '*' : o = OP_TIMES       ; break;
+		case '/' : o = OP_DIVIDE      ; break;
+		case '^' : o = OP_POWER       ; break;
+		case '(' :
+		case '[' : o = OP_LEFT_BRACE  ; break;
+		case ')' :
+		case ']' : o = OP_RIGHT_BRACE ; break;
 	}
 
-	/* If everything else fails. */
-	return OP_UNKNOWN;
+	return o;
 }
 
 Operator string_to_operator(char *s) {
-	// exp, ln, sin, cos, tan, x, pi, e
+	/* exp, ln, sin, cos, tan, x, pi, e */
 	if (strcmp(s, "exp") == 0) {
 		return OP_EXP;
 	}
@@ -847,8 +859,8 @@ Operator string_to_operator(char *s) {
 	if (strcmp(s, "e") == 0 || strcmp(s, "E") == 0) {
 		return OP_E;
 	}
-	
-	fprintf(stderr, "Format error: cannot convert string \"%s\" to symbol.", s);
-	exit(1);
+
+	/* If everything else fails. */
+	return OP_UNKNOWN;
 }
 

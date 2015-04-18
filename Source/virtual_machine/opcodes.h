@@ -3,7 +3,8 @@
 
 /** Enumeration of opcodes for the virtual machine.
  *
- *  We skip over the number 0x00 because it's easier to debug.
+ *  We skip over the number 0x00 because it's easier to debug. The type used
+ *  for opcodes should be uint8_t.
  */
 enum vm_opcodes {
 	OPC_NUM   = 0x01, /**< Number literal.       */
